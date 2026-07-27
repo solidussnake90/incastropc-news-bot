@@ -2,6 +2,7 @@ import anthropic
 import os
 import base64
 import urllib.request
+import urllib.parse
 import json
 
 client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
@@ -48,23 +49,34 @@ def generate_image(prompt, label="immagine"):
         api_key = os.environ.get("STABILITY_API_KEY")
         url = "https://api.stability.ai/v2beta/stable-image/generate/core"
 
-        payload = json.dumps({
-            "prompt": prompt + ", cinematic lighting, high quality, sharp focus, 16:9",
-            "output_format": "jpeg",
-            "aspect_ratio": "16:9",
-        }).encode("utf-8")
+        # Stability vuole multipart/form-data
+        boundary = "----FormBoundary7MA4YWxkTrZu0gW"
+        body = (
+            "--" + boundary + "\r\n"
+            "Content-Disposition: form-data; name=\"prompt\"\r\n\r\n"
+            + prompt + ", cinematic lighting, high quality, sharp focus\r\n"
+            "--" + boundary + "\r\n"
+            "Content-Disposition: form-data; name=\"output_format\"\r\n\r\n"
+            "jpeg\r\n"
+            "--" + boundary + "\r\n"
+            "Content-Disposition: form-data; name=\"aspect_ratio\"\r\n\r\n"
+            "16:9\r\n"
+            "--" + boundary + "--\r\n"
+        ).encode("utf-8")
 
-        req = urllib.request.Request(url, data=payload, method="POST")
+        req = urllib.request.Request(url, data=body, method="POST")
         req.add_header("Authorization", "Bearer " + api_key)
-        req.add_header("Content-Type", "application/json")
-        req.add_header("Accept", "application/json")
+        req.add_header("Content-Type", "multipart/form-data; boundary=" + boundary)
+        req.add_header("Accept", "image/*")
 
         with urllib.request.urlopen(req) as resp:
-            data = json.loads(resp.read())
-            if "image" in data:
-                return data["image"]
-            else:
-                print("  Risposta inattesa Stability: " + str(data)[:200])
+            img_bytes = resp.read()
+            print("  Immagine ricevuta: " + str(len(img_bytes)) + " bytes")
+            return base64.b64encode(img_bytes).decode("utf-8")
+
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8")
+        print("  Errore HTTP " + str(e.code) + " per " + label + ": " + error_body[:300])
     except Exception as e:
         print("  Errore generazione " + label + ": " + str(e))
     return None
