@@ -1,7 +1,9 @@
 import smtplib
 import datetime
+import base64
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 from config import SMTP_HOST, SMTP_PORT, EMAIL_FROM, EMAIL_PASSWORD, EMAIL_TO
 
 EMAIL_TEMPLATE = """
@@ -19,6 +21,8 @@ EMAIL_TEMPLATE = """
   .article-block {{ border: 1px solid #e8e8e8; border-radius: 6px; margin-bottom: 40px; overflow: hidden; }}
   .article-header {{ background: #0a0a14; padding: 14px 20px; }}
   .article-num {{ background: #FFD700; color: #000; font-weight: 700; font-size: 13px; padding: 3px 10px; border-radius: 3px; }}
+  .cover-img {{ width: 100%; height: 220px; object-fit: cover; display: block; }}
+  .body-img {{ width: 100%; max-height: 180px; object-fit: cover; display: block; margin: 16px 0; border-radius: 4px; }}
   .article-body {{ padding: 24px; }}
   .article-body h1 {{ font-size: 20px; color: #111; margin: 0 0 16px; line-height: 1.3; }}
   .article-body h2 {{ font-size: 16px; color: #222; margin: 20px 0 10px; border-left: 3px solid #FFD700; padding-left: 10px; }}
@@ -51,7 +55,9 @@ def parse_articles(raw_text):
 
 def format_article_html(block, index):
     yoast_kp = yoast_meta = yoast_slug = ""
+    cover_b64 = body_b64 = ""
     clean_lines = []
+
     for line in block.split("\n"):
         if line.startswith("YOAST_KEYPHRASE:"):
             yoast_kp = line.replace("YOAST_KEYPHRASE:", "").strip()
@@ -59,12 +65,34 @@ def format_article_html(block, index):
             yoast_meta = line.replace("YOAST_METADESC:", "").strip()
         elif line.startswith("YOAST_SLUG:"):
             yoast_slug = line.replace("YOAST_SLUG:", "").strip()
+        elif line.startswith("COVER_IMAGE_B64:"):
+            cover_b64 = line.replace("COVER_IMAGE_B64:", "").strip()
+        elif line.startswith("BODY_IMAGE_B64:"):
+            body_b64 = line.replace("BODY_IMAGE_B64:", "").strip()
+        elif line.startswith("IMAGE_COVER:") or line.startswith("IMAGE_BODY:"):
+            continue
         elif line.startswith("<!-- ARTICOLO") or line.startswith("<!-- FINE"):
             continue
         else:
             clean_lines.append(line)
 
     article_html = "\n".join(clean_lines).strip()
+
+    # Immagine copertina
+    cover_html = ""
+    if cover_b64:
+        cover_html = f'<img src="data:image/jpeg;base64,{cover_b64}" class="cover-img" alt="Immagine copertina articolo {index}">'
+
+    # Immagine interna (inserita dopo il secondo paragrafo)
+    body_img_html = ""
+    if body_b64:
+        body_img_html = f'<img src="data:image/jpeg;base64,{body_b64}" class="body-img" alt="Immagine articolo {index}">'
+        # Inserisci dopo il secondo </p>
+        parts = article_html.split("</p>", 2)
+        if len(parts) >= 3:
+            article_html = parts[0] + "</p>" + parts[1] + "</p>" + body_img_html + parts[2]
+
+    # Blocco SEO
     seo_block = ""
     if yoast_kp or yoast_meta or yoast_slug:
         seo_block = f"""
@@ -80,6 +108,7 @@ def format_article_html(block, index):
       <div class="article-header">
         <span class="article-num">Articolo {index}</span>
       </div>
+      {cover_html}
       <div class="article-body">
         {article_html}
         {seo_block}
@@ -89,6 +118,7 @@ def format_article_html(block, index):
 def send_digest(raw_text):
     today = datetime.date.today().strftime("%d %B %Y")
     article_blocks = parse_articles(raw_text)
+
     if not article_blocks:
         articles_html = f"<pre>{raw_text}</pre>"
         count = "N/A"
@@ -98,7 +128,12 @@ def send_digest(raw_text):
             articles_html += format_article_html(block, i)
         count = len(article_blocks)
 
-    html_body = EMAIL_TEMPLATE.format(articles_html=articles_html, count=count, date=today)
+    html_body = EMAIL_TEMPLATE.format(
+        articles_html=articles_html,
+        count=count,
+        date=today
+    )
+
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"⚡ IncastroPC Articoli — {today}"
     msg["From"] = EMAIL_FROM
