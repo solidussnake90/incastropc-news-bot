@@ -1,5 +1,6 @@
 import anthropic
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import os
 import base64
 from config import ANTHROPIC_API_KEY
@@ -59,24 +60,23 @@ IMAGE_BODY: [prompt immagine interna]
 """
 
 def generate_image(prompt, label="immagine"):
-    """Genera un'immagine con Gemini Flash e restituisce base64."""
+    """Genera un'immagine con Gemini e restituisce base64."""
     try:
-        model = genai.GenerativeModel("gemini-2.0-flash-preview-image-generation")
-        response = model.generate_content(
-            f"Generate a high quality image: {prompt}. Style: cinematic, professional, 16:9 ratio, tech gaming aesthetic.",
-            generation_config=genai.GenerationConfig(response_mime_type="image/jpeg")
+        gemini_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+        response = gemini_client.models.generate_image(
+            model="imagen-3.0-generate-002",
+            prompt=f"High quality image: {prompt}. Style: cinematic, professional, tech gaming aesthetic.",
+            config=types.GenerateImageConfig(
+                number_of_images=1,
+                aspect_ratio="16:9",
+            )
         )
-        for part in response.candidates[0].content.parts:
-            if hasattr(part, 'inline_data') and part.inline_data:
-                return base64.b64encode(part.inline_data.data).decode('utf-8')
+        if response.generated_images:
+            img_data = response.generated_images[0].image.image_bytes
+            return base64.b64encode(img_data).decode('utf-8')
     except Exception as e:
         print(f"  ✗ Errore generazione {label}: {e}")
     return None
-
-def generate_digest(articles):
-    news_block = ""
-    for i, a in enumerate(articles, 1):
-        news_block += f"""
 ---
 NOTIZIA {i}
 Titolo originale: {a['title']}
