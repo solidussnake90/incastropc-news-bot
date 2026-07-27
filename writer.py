@@ -1,6 +1,8 @@
 import anthropic
 import os
 import base64
+import urllib.request
+import json
 
 client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
@@ -43,22 +45,26 @@ SYSTEM_PROMPT = (
 
 def generate_image(prompt, label="immagine"):
     try:
-        from google import genai
-        from google.genai import types
-        gemini_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-        response = gemini_client.models.generate_images(
-            model="imagen-3.0-generate-002",
-            prompt="High quality 16:9 image: " + prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                aspect_ratio="16:9",
-            ),
-        )
-        if response.generated_images:
-            img_bytes = response.generated_images[0].image.image_bytes
-            return base64.b64encode(img_bytes).decode("utf-8")
-        else:
-            print("  Nessuna immagine generata per " + label)
+        api_key = os.environ.get("STABILITY_API_KEY")
+        url = "https://api.stability.ai/v2beta/stable-image/generate/core"
+
+        payload = json.dumps({
+            "prompt": prompt + ", cinematic lighting, high quality, sharp focus, 16:9",
+            "output_format": "jpeg",
+            "aspect_ratio": "16:9",
+        }).encode("utf-8")
+
+        req = urllib.request.Request(url, data=payload, method="POST")
+        req.add_header("Authorization", "Bearer " + api_key)
+        req.add_header("Content-Type", "application/json")
+        req.add_header("Accept", "application/json")
+
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read())
+            if "image" in data:
+                return data["image"]
+            else:
+                print("  Risposta inattesa Stability: " + str(data)[:200])
     except Exception as e:
         print("  Errore generazione " + label + ": " + str(e))
     return None
@@ -100,7 +106,7 @@ def generate_digest(articles):
     print("Articoli trovati: " + str(len(article_blocks)))
     print("Prompt immagini trovati: " + str(raw_text.count("IMAGE_COVER:")))
 
-    print("Generazione immagini con Gemini...")
+    print("Generazione immagini con Stability AI...")
     enriched_blocks = []
 
     for i, block in enumerate(article_blocks):
