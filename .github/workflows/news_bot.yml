@@ -1,0 +1,30 @@
+name: IncastroPC News Bot
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # ogni giorno alle 8:00 ora italiana (UTC+2)
+  workflow_dispatch:       # permette avvio manuale dal browser
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Installa dipendenze
+        run: pip install feedparser anthropic
+
+      - name: Avvia il bot
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EMAIL_FROM:        ${{ secrets.EMAIL_FROM }}
+          EMAIL_PASSWORD:    ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_TO:          ${{ secrets.EMAIL_TO }}
+        run: python main.py
