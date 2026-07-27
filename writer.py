@@ -84,7 +84,7 @@ def generate_digest(articles):
     print("Invio a Claude API...")
     response = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=8000,
+        max_tokens=16000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}]
     )
