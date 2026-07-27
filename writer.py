@@ -12,14 +12,14 @@ SYSTEM_PROMPT = (
     "1. Titolo SEO (50-65 caratteri)\n"
     "2. Intro (2 paragrafi)\n"
     "3. Corpo (3-5 paragrafi con H2)\n"
-    "4. Sezione 'Cosa significa per IncastroPC' (H2)\n"
+    "4. Sezione Cosa significa per IncastroPC (H2)\n"
     "5. Conclusione\n\n"
     "REGOLE:\n"
     "- Niente em-dash\n"
     "- Bold ogni 2-3 paragrafi\n"
     "- Italiano fluente, 400-600 parole per articolo\n"
     "- Niente tabelle\n\n"
-    "FORMATO per ogni articolo:\n"
+    "FORMATO OBBLIGATORIO per ogni articolo:\n"
     "<!-- ARTICOLO [numero]: [Titolo] -->\n"
     "<!-- wp:heading {\"level\":1} -->\n"
     "<h1>[Titolo]</h1>\n"
@@ -27,13 +27,18 @@ SYSTEM_PROMPT = (
     "<!-- wp:paragraph -->\n"
     "<p>[testo]</p>\n"
     "<!-- /wp:paragraph -->\n"
+    "<!-- wp:heading {\"level\":2} -->\n"
+    "<h2>[titolo sezione]</h2>\n"
+    "<!-- /wp:heading -->\n"
     "<!-- FINE ARTICOLO [numero] -->\n"
     "---\n"
-    "YOAST_KEYPHRASE: [keyphrase]\n"
-    "YOAST_METADESC: [meta 150-158 caratteri]\n"
-    "YOAST_SLUG: [slug]\n"
-    "IMAGE_COVER: [prompt inglese per immagine copertina cinematografica 16:9]\n"
-    "IMAGE_BODY: [prompt inglese per immagine interna tech illustration]\n"
+    "YOAST_KEYPHRASE: [keyphrase principale]\n"
+    "YOAST_METADESC: [meta description 150-158 caratteri]\n"
+    "YOAST_SLUG: [slug-url]\n"
+    "IMAGE_COVER: [prompt inglese per copertina, esempio: dark linux gaming setup with glowing AMD GPU, cinematic 16:9]\n"
+    "IMAGE_BODY: [prompt inglese per immagine interna, esempio: mini PC with Linux penguin neon glow tech illustration 16:9]\n\n"
+    "IMPORTANTE: devi SEMPRE includere IMAGE_COVER e IMAGE_BODY alla fine di ogni articolo, dopo YOAST_SLUG. "
+    "Sono obbligatori per generare le immagini automaticamente.\n"
 )
 
 
@@ -44,7 +49,7 @@ def generate_image(prompt, label="immagine"):
         gemini_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
         response = gemini_client.models.generate_image(
             model="imagen-3.0-generate-002",
-            prompt="High quality image: " + prompt + ". Style: cinematic, professional, tech gaming.",
+            prompt="High quality image: " + prompt + ". Style: cinematic, professional, tech gaming aesthetic, sharp focus.",
             config=types.GenerateImageConfig(
                 number_of_images=1,
                 aspect_ratio="16:9",
@@ -53,6 +58,8 @@ def generate_image(prompt, label="immagine"):
         if response.generated_images:
             img_data = response.generated_images[0].image.image_bytes
             return base64.b64encode(img_data).decode("utf-8")
+        else:
+            print("  Nessuna immagine generata per " + label)
     except Exception as e:
         print("  Errore generazione " + label + ": " + str(e))
     return None
@@ -74,7 +81,9 @@ def generate_digest(articles):
     user_prompt = (
         "Ecco " + str(len(articles)) + " notizie gaming delle ultime 24 ore per IncastroPC.\n\n"
         + news_block +
-        "\nScrivi un articolo completo per ognuna. Inizia subito senza preamboli."
+        "\nScrivi un articolo completo in italiano per ognuna. "
+        "Ricorda: includi SEMPRE IMAGE_COVER e IMAGE_BODY alla fine di ogni articolo. "
+        "Inizia subito con il primo articolo senza preamboli."
     )
 
     print("Invio a Claude API...")
@@ -86,6 +95,10 @@ def generate_digest(articles):
     )
     raw_text = response.content[0].text
     print("Articoli generati: " + str(len(raw_text)) + " caratteri")
+
+    # Conta quanti IMAGE_COVER ha incluso Claude
+    cover_count = raw_text.count("IMAGE_COVER:")
+    print("Prompt immagini trovati: " + str(cover_count))
 
     # Genera immagini con Gemini
     print("Generazione immagini con Gemini...")
@@ -106,17 +119,21 @@ def generate_digest(articles):
             elif line.startswith("IMAGE_BODY:"):
                 body_prompt = line.replace("IMAGE_BODY:", "").strip()
 
+        print("  Cover prompt: " + cover_prompt[:60] + "...")
+
         if cover_prompt:
             print("  Generando copertina...")
             cover_b64 = generate_image(cover_prompt, "copertina")
             if cover_b64:
                 block += "\nCOVER_IMAGE_B64: " + cover_b64
+                print("  Copertina OK")
 
         if body_prompt:
             print("  Generando immagine interna...")
             body_b64 = generate_image(body_prompt, "interna")
             if body_b64:
                 block += "\nBODY_IMAGE_B64: " + body_b64
+                print("  Immagine interna OK")
 
         enriched_blocks.append(block)
 
