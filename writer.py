@@ -1,71 +1,50 @@
 import anthropic
-from google import genai
-from google.genai import types
 import os
 import base64
-from config import ANTHROPIC_API_KEY
 
-client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-SYSTEM_PROMPT = """Sei il redattore capo di IncastroPC.com, blog italiano dedicato a Linux gaming, 
-Mini PC con grafica integrata AMD/Intel e software open source. Il tuo pubblico è tecnico ma non estremo — 
-appassionati che vogliono giocare su hardware accessibile con Linux.
+SYSTEM_PROMPT = (
+    "Sei il redattore capo di IncastroPC.com, blog italiano dedicato a Linux gaming, "
+    "Mini PC con grafica integrata AMD/Intel e software open source. "
+    "Per ogni notizia scrivi un articolo completo in italiano pronto per WordPress.\n\n"
+    "STRUTTURA:\n"
+    "1. Titolo SEO (50-65 caratteri)\n"
+    "2. Intro (2 paragrafi)\n"
+    "3. Corpo (3-5 paragrafi con H2)\n"
+    "4. Sezione 'Cosa significa per IncastroPC' (H2)\n"
+    "5. Conclusione\n\n"
+    "REGOLE:\n"
+    "- Niente em-dash\n"
+    "- Bold ogni 2-3 paragrafi\n"
+    "- Italiano fluente, 400-600 parole per articolo\n"
+    "- Niente tabelle\n\n"
+    "FORMATO per ogni articolo:\n"
+    "<!-- ARTICOLO [numero]: [Titolo] -->\n"
+    "<!-- wp:heading {\"level\":1} -->\n"
+    "<h1>[Titolo]</h1>\n"
+    "<!-- /wp:heading -->\n"
+    "<!-- wp:paragraph -->\n"
+    "<p>[testo]</p>\n"
+    "<!-- /wp:paragraph -->\n"
+    "<!-- FINE ARTICOLO [numero] -->\n"
+    "---\n"
+    "YOAST_KEYPHRASE: [keyphrase]\n"
+    "YOAST_METADESC: [meta 150-158 caratteri]\n"
+    "YOAST_SLUG: [slug]\n"
+    "IMAGE_COVER: [prompt inglese per immagine copertina cinematografica 16:9]\n"
+    "IMAGE_BODY: [prompt inglese per immagine interna tech illustration]\n"
+)
 
-Per ogni notizia che ricevi devi scrivere un ARTICOLO COMPLETO in italiano, pronto per essere pubblicato 
-su WordPress con minime modifiche. 
-
-STRUTTURA OBBLIGATORIA DI OGNI ARTICOLO:
-1. Titolo SEO (50-65 caratteri, include la keyword principale)
-2. Intro (2 paragrafi): primo con una scena concreta o fatto sorprendente che aggancia il lettore, 
-   secondo che contestualizza la notizia per il pubblico IncastroPC
-3. Corpo dell'articolo (3-5 paragrafi con H2): sviluppa la notizia, aggiungi contesto tecnico, 
-   spiega le implicazioni per chi usa Linux o Mini PC con iGPU AMD/Intel
-4. Sezione "Cosa significa per IncastroPC" (H2)
-5. Conclusione (1 paragrafo)
-
-REGOLE STILISTICHE:
-- Niente em-dash o trattini narrativi
-- Bold ogni 2-3 paragrafi su concetti chiave
-- Tono diretto, italiano fluente
-- Lunghezza: 400-600 parole per articolo
-- Niente tabelle, niente separatori orizzontali
-
-Alla fine di ogni articolo aggiungi:
-IMAGE_COVER: [prompt inglese per immagine di copertina, stile cinematografico, 16:9, gaming/tech]
-IMAGE_BODY: [prompt inglese per immagine interna, stile tech illustration, 16:9]
-
-FORMATO OUTPUT HTML Gutenberg per ogni articolo:
-
-<!-- ARTICOLO [numero]: [Titolo] -->
-<!-- wp:heading {"level":1} -->
-<h1>[Titolo SEO]</h1>
-<!-- /wp:heading -->
-
-<!-- wp:paragraph -->
-<p>[contenuto]</p>
-<!-- /wp:paragraph -->
-
-<!-- wp:heading {"level":2} -->
-<h2>[Titolo sezione]</h2>
-<!-- /wp:heading -->
-
-<!-- FINE ARTICOLO [numero] -->
----
-YOAST_KEYPHRASE: [focus keyphrase]
-YOAST_METADESC: [meta description 150-158 caratteri]
-YOAST_SLUG: [slug-url-articolo]
-IMAGE_COVER: [prompt copertina]
-IMAGE_BODY: [prompt immagine interna]
-"""
 
 def generate_image(prompt, label="immagine"):
-    """Genera un'immagine con Gemini e restituisce base64."""
     try:
+        from google import genai
+        from google.genai import types
         gemini_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
         response = gemini_client.models.generate_image(
             model="imagen-3.0-generate-002",
-            prompt=f"High quality image: {prompt}. Style: cinematic, professional, tech gaming aesthetic.",
+            prompt="High quality image: " + prompt + ". Style: cinematic, professional, tech gaming.",
             config=types.GenerateImageConfig(
                 number_of_images=1,
                 aspect_ratio="16:9",
@@ -73,26 +52,30 @@ def generate_image(prompt, label="immagine"):
         )
         if response.generated_images:
             img_data = response.generated_images[0].image.image_bytes
-            return base64.b64encode(img_data).decode('utf-8')
+            return base64.b64encode(img_data).decode("utf-8")
     except Exception as e:
-        print(f"  ✗ Errore generazione {label}: {e}")
+        print("  Errore generazione " + label + ": " + str(e))
     return None
----
-NOTIZIA {i}
-Titolo originale: {a['title']}
-Fonte: {a['source']}
-URL originale: {a['url']}
-Riassunto: {a['summary'][:600]}
-Punteggio rilevanza IncastroPC: {a['score']}/100
-"""
 
-    user_prompt = f"""Ecco le {len(articles)} notizie gaming più rilevanti delle ultime 24 ore per IncastroPC.
 
-{news_block}
+def generate_digest(articles):
+    news_block = ""
+    for i, a in enumerate(articles, 1):
+        news_block += (
+            "---\n"
+            "NOTIZIA " + str(i) + "\n"
+            "Titolo: " + a["title"] + "\n"
+            "Fonte: " + a["source"] + "\n"
+            "URL: " + a["url"] + "\n"
+            "Riassunto: " + a["summary"][:400] + "\n"
+            "Punteggio: " + str(a["score"]) + "/100\n"
+        )
 
-Scrivi un articolo completo in italiano per ognuna delle {len(articles)} notizie, 
-seguendo esattamente la struttura e le regole editoriali di IncastroPC.
-Inizia direttamente con il primo articolo, senza preamboli."""
+    user_prompt = (
+        "Ecco " + str(len(articles)) + " notizie gaming delle ultime 24 ore per IncastroPC.\n\n"
+        + news_block +
+        "\nScrivi un articolo completo per ognuna. Inizia subito senza preamboli."
+    )
 
     print("Invio a Claude API...")
     response = client.messages.create(
@@ -102,9 +85,9 @@ Inizia direttamente con il primo articolo, senza preamboli."""
         messages=[{"role": "user", "content": user_prompt}]
     )
     raw_text = response.content[0].text
-    print(f"Articoli generati: {len(raw_text)} caratteri")
+    print("Articoli generati: " + str(len(raw_text)) + " caratteri")
 
-    # Genera immagini per ogni articolo
+    # Genera immagini con Gemini
     print("Generazione immagini con Gemini...")
     blocks = raw_text.split("---")
     enriched_blocks = []
@@ -115,7 +98,6 @@ Inizia direttamente con il primo articolo, senza preamboli."""
             enriched_blocks.append(block)
             continue
 
-        # Estrai prompt immagini
         cover_prompt = ""
         body_prompt = ""
         for line in block.split("\n"):
@@ -124,21 +106,17 @@ Inizia direttamente con il primo articolo, senza preamboli."""
             elif line.startswith("IMAGE_BODY:"):
                 body_prompt = line.replace("IMAGE_BODY:", "").strip()
 
-        # Genera immagini
-        cover_b64 = None
-        body_b64 = None
         if cover_prompt:
-            print(f"  Generando copertina...")
+            print("  Generando copertina...")
             cover_b64 = generate_image(cover_prompt, "copertina")
-        if body_prompt:
-            print(f"  Generando immagine interna...")
-            body_b64 = generate_image(body_prompt, "interna")
+            if cover_b64:
+                block += "\nCOVER_IMAGE_B64: " + cover_b64
 
-        # Aggiungi immagini al blocco
-        if cover_b64:
-            block += f"\nCOVER_IMAGE_B64: {cover_b64}"
-        if body_b64:
-            block += f"\nBODY_IMAGE_B64: {body_b64}"
+        if body_prompt:
+            print("  Generando immagine interna...")
+            body_b64 = generate_image(body_prompt, "interna")
+            if body_b64:
+                block += "\nBODY_IMAGE_B64: " + body_b64
 
         enriched_blocks.append(block)
 
