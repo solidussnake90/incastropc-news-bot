@@ -20,7 +20,7 @@ SYSTEM_PROMPT = (
     "- Italiano fluente, 400-600 parole per articolo\n"
     "- Niente tabelle\n\n"
     "FORMATO OBBLIGATORIO per ogni articolo:\n"
-    "<!-- ARTICOLO [numero]: [Titolo] -->\n"
+    "==INIZIO_ARTICOLO==\n"
     "<!-- wp:heading {\"level\":1} -->\n"
     "<h1>[Titolo]</h1>\n"
     "<!-- /wp:heading -->\n"
@@ -30,15 +30,14 @@ SYSTEM_PROMPT = (
     "<!-- wp:heading {\"level\":2} -->\n"
     "<h2>[titolo sezione]</h2>\n"
     "<!-- /wp:heading -->\n"
-    "<!-- FINE ARTICOLO [numero] -->\n"
-    "---\n"
     "YOAST_KEYPHRASE: [keyphrase principale]\n"
     "YOAST_METADESC: [meta description 150-158 caratteri]\n"
     "YOAST_SLUG: [slug-url]\n"
-    "IMAGE_COVER: [prompt inglese per copertina, esempio: dark linux gaming setup with glowing AMD GPU, cinematic 16:9]\n"
-    "IMAGE_BODY: [prompt inglese per immagine interna, esempio: mini PC with Linux penguin neon glow tech illustration 16:9]\n\n"
-    "IMPORTANTE: devi SEMPRE includere IMAGE_COVER e IMAGE_BODY alla fine di ogni articolo, dopo YOAST_SLUG. "
-    "Sono obbligatori per generare le immagini automaticamente.\n"
+    "IMAGE_COVER: [prompt inglese per copertina, esempio: dark linux gaming setup AMD GPU cinematic 16:9]\n"
+    "IMAGE_BODY: [prompt inglese immagine interna, esempio: mini PC Linux penguin neon glow tech 16:9]\n"
+    "==FINE_ARTICOLO==\n\n"
+    "IMPORTANTE: usa SEMPRE ==INIZIO_ARTICOLO== e ==FINE_ARTICOLO== come delimitatori. "
+    "Includi SEMPRE IMAGE_COVER e IMAGE_BODY con un prompt reale in inglese prima di ==FINE_ARTICOLO==.\n"
 )
 
 
@@ -64,21 +63,21 @@ def generate_digest(articles):
     news_block = ""
     for i, a in enumerate(articles, 1):
         news_block += (
-            "---\n"
             "NOTIZIA " + str(i) + "\n"
             "Titolo: " + a["title"] + "\n"
             "Fonte: " + a["source"] + "\n"
             "URL: " + a["url"] + "\n"
             "Riassunto: " + a["summary"][:400] + "\n"
-            "Punteggio: " + str(a["score"]) + "/100\n"
+            "Punteggio: " + str(a["score"]) + "/100\n\n"
         )
 
     user_prompt = (
-        "Ecco " + str(len(articles)) + " notizie gaming delle ultime 24 ore per IncastroPC.\n\n"
+        "Ecco " + str(len(articles)) + " notizie gaming per IncastroPC.\n\n"
         + news_block +
-        "\nScrivi un articolo completo in italiano per ognuna. "
-        "Ricorda: includi SEMPRE IMAGE_COVER e IMAGE_BODY alla fine di ogni articolo. "
-        "Inizia subito con il primo articolo senza preamboli."
+        "Scrivi un articolo completo per ognuna. "
+        "Usa ==INIZIO_ARTICOLO== e ==FINE_ARTICOLO== come delimitatori. "
+        "Includi SEMPRE IMAGE_COVER e IMAGE_BODY con prompt reali in inglese. "
+        "Inizia subito senza preamboli."
     )
 
     print("Invio a Claude API...")
@@ -91,37 +90,38 @@ def generate_digest(articles):
     raw_text = response.content[0].text
     print("Articoli generati: " + str(len(raw_text)) + " caratteri")
 
+    # Estrai articoli con i nuovi delimitatori
+    import re
+    article_blocks = re.findall(r"==INIZIO_ARTICOLO==(.*?)==FINE_ARTICOLO==", raw_text, re.DOTALL)
+    print("Articoli trovati: " + str(len(article_blocks)))
+
     cover_count = raw_text.count("IMAGE_COVER:")
     print("Prompt immagini trovati: " + str(cover_count))
 
     print("Generazione immagini con Gemini...")
-    blocks = raw_text.split("---")
     enriched_blocks = []
 
-    for block in blocks:
+    for i, block in enumerate(article_blocks):
         block = block.strip()
-        if not block or "<!-- ARTICOLO" not in block:
-            enriched_blocks.append(block)
-            continue
-
         cover_prompt = ""
         body_prompt = ""
+
         for line in block.split("\n"):
             if line.startswith("IMAGE_COVER:"):
                 cover_prompt = line.replace("IMAGE_COVER:", "").strip()
             elif line.startswith("IMAGE_BODY:"):
                 body_prompt = line.replace("IMAGE_BODY:", "").strip()
 
-        print("  Cover prompt: " + cover_prompt[:60] + "...")
+        print("  Articolo " + str(i+1) + " - Cover prompt: " + cover_prompt[:80])
 
-        if cover_prompt:
+        if cover_prompt and cover_prompt != "...":
             print("  Generando copertina...")
             cover_b64 = generate_image(cover_prompt, "copertina")
             if cover_b64:
                 block += "\nCOVER_IMAGE_B64: " + cover_b64
                 print("  Copertina OK")
 
-        if body_prompt:
+        if body_prompt and body_prompt != "...":
             print("  Generando immagine interna...")
             body_b64 = generate_image(body_prompt, "interna")
             if body_b64:
@@ -130,4 +130,9 @@ def generate_digest(articles):
 
         enriched_blocks.append(block)
 
-    return "---".join(enriched_blocks)
+    # Ricostruisci il testo con separatore compatibile con mailer.py
+    result = ""
+    for block in enriched_blocks:
+        result += "<!-- ARTICOLO -->\n" + block + "\n---\n"
+
+    return result
