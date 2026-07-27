@@ -1,9 +1,7 @@
 import smtplib
 import datetime
-import base64
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.image import MIMEImage
 from config import SMTP_HOST, SMTP_PORT, EMAIL_FROM, EMAIL_PASSWORD, EMAIL_TO
 
 EMAIL_TEMPLATE = """
@@ -34,11 +32,11 @@ EMAIL_TEMPLATE = """
 <body>
 <div class="container">
   <div class="header">
-    <h1>⚡ IncastroPC — Articoli del giorno</h1>
-    <p>{count} articoli pronti per WordPress · {date}</p>
+    <h1>IncastroPC - Articoli del giorno</h1>
+    <p>{count} articoli pronti per WordPress - {date}</p>
   </div>
   <div class="content">{articles_html}</div>
-  <div class="footer">Generato da IncastroPC News Bot · {date}</div>
+  <div class="footer">Generato da IncastroPC News Bot - {date}</div>
 </div>
 </body>
 </html>
@@ -49,7 +47,8 @@ def parse_articles(raw_text):
     blocks = raw_text.split("---")
     for block in blocks:
         block = block.strip()
-        if block and "<!-- ARTICOLO" in block:
+        if block and "<!-- ARTICOLO -->" in block:
+            block = block.replace("<!-- ARTICOLO -->", "").strip()
             articles.append(block)
     return articles
 
@@ -71,8 +70,6 @@ def format_article_html(block, index):
             body_b64 = line.replace("BODY_IMAGE_B64:", "").strip()
         elif line.startswith("IMAGE_COVER:") or line.startswith("IMAGE_BODY:"):
             continue
-        elif line.startswith("<!-- ARTICOLO") or line.startswith("<!-- FINE"):
-            continue
         else:
             clean_lines.append(line)
 
@@ -81,52 +78,47 @@ def format_article_html(block, index):
     # Immagine copertina
     cover_html = ""
     if cover_b64:
-        cover_html = f'<img src="data:image/jpeg;base64,{cover_b64}" class="cover-img" alt="Immagine copertina articolo {index}">'
+        cover_html = '<img src="data:image/jpeg;base64,' + cover_b64 + '" class="cover-img" alt="Copertina articolo ' + str(index) + '">'
 
-    # Immagine interna (inserita dopo il secondo paragrafo)
-    body_img_html = ""
+    # Immagine interna dopo il secondo paragrafo
     if body_b64:
-        body_img_html = f'<img src="data:image/jpeg;base64,{body_b64}" class="body-img" alt="Immagine articolo {index}">'
-        # Inserisci dopo il secondo </p>
+        body_img = '<img src="data:image/jpeg;base64,' + body_b64 + '" class="body-img" alt="Immagine articolo ' + str(index) + '">'
         parts = article_html.split("</p>", 2)
         if len(parts) >= 3:
-            article_html = parts[0] + "</p>" + parts[1] + "</p>" + body_img_html + parts[2]
+            article_html = parts[0] + "</p>" + parts[1] + "</p>" + body_img + parts[2]
 
     # Blocco SEO
     seo_block = ""
     if yoast_kp or yoast_meta or yoast_slug:
-        seo_block = f"""
-        <div class="seo-block">
-          <strong>🎯 Yoast SEO</strong><br>
-          <b>Keyphrase:</b> {yoast_kp}<br>
-          <b>Meta:</b> {yoast_meta}<br>
-          <b>Slug:</b> {yoast_slug}
-        </div>"""
+        seo_block = (
+            '<div class="seo-block">'
+            '<strong>Yoast SEO</strong><br>'
+            '<b>Keyphrase:</b> ' + yoast_kp + '<br>'
+            '<b>Meta:</b> ' + yoast_meta + '<br>'
+            '<b>Slug:</b> ' + yoast_slug +
+            '</div>'
+        )
 
-    return f"""
-    <div class="article-block">
-      <div class="article-header">
-        <span class="article-num">Articolo {index}</span>
-      </div>
-      {cover_html}
-      <div class="article-body">
-        {article_html}
-        {seo_block}
-      </div>
-    </div>"""
+    return (
+        '<div class="article-block">'
+        '<div class="article-header"><span class="article-num">Articolo ' + str(index) + '</span></div>'
+        + cover_html +
+        '<div class="article-body">' + article_html + seo_block + '</div>'
+        '</div>'
+    )
 
 def send_digest(raw_text):
     today = datetime.date.today().strftime("%d %B %Y")
     article_blocks = parse_articles(raw_text)
 
     if not article_blocks:
-        articles_html = f"<pre>{raw_text}</pre>"
-        count = "N/A"
+        articles_html = "<pre>" + raw_text[:2000] + "</pre>"
+        count = "0"
     else:
         articles_html = ""
         for i, block in enumerate(article_blocks, 1):
             articles_html += format_article_html(block, i)
-        count = len(article_blocks)
+        count = str(len(article_blocks))
 
     html_body = EMAIL_TEMPLATE.format(
         articles_html=articles_html,
@@ -135,7 +127,7 @@ def send_digest(raw_text):
     )
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"⚡ IncastroPC Articoli — {today}"
+    msg["Subject"] = "IncastroPC Articoli - " + today
     msg["From"] = EMAIL_FROM
     msg["To"] = EMAIL_TO
     msg.attach(MIMEText(html_body, "html"))
@@ -144,4 +136,4 @@ def send_digest(raw_text):
         server.starttls()
         server.login(EMAIL_FROM, EMAIL_PASSWORD)
         server.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
-    print(f"✓ Email inviata a {EMAIL_TO}")
+    print("Email inviata a " + EMAIL_TO)
