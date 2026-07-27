@@ -44,16 +44,21 @@ SYSTEM_PROMPT = (
 def generate_image(prompt, label="immagine"):
     try:
         from google import genai
+        from google.genai import types
         gemini_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-        response = gemini_client.models.generate_content(
-            model="gemini-2.0-flash-preview-image-generation",
-            contents="Generate a high quality 16:9 image: " + prompt,
-            config={"response_modalities": ["IMAGE"]},
+        response = gemini_client.models.generate_images(
+            model="imagen-3.0-generate-002",
+            prompt="High quality 16:9 image: " + prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio="16:9",
+            ),
         )
-        for part in response.candidates[0].content.parts:
-            if hasattr(part, "inline_data") and part.inline_data:
-                return base64.b64encode(part.inline_data.data).decode("utf-8")
-        print("  Nessuna immagine nei risultati per " + label)
+        if response.generated_images:
+            img_bytes = response.generated_images[0].image.image_bytes
+            return base64.b64encode(img_bytes).decode("utf-8")
+        else:
+            print("  Nessuna immagine generata per " + label)
     except Exception as e:
         print("  Errore generazione " + label + ": " + str(e))
     return None
@@ -90,13 +95,10 @@ def generate_digest(articles):
     raw_text = response.content[0].text
     print("Articoli generati: " + str(len(raw_text)) + " caratteri")
 
-    # Estrai articoli con i nuovi delimitatori
     import re
     article_blocks = re.findall(r"==INIZIO_ARTICOLO==(.*?)==FINE_ARTICOLO==", raw_text, re.DOTALL)
     print("Articoli trovati: " + str(len(article_blocks)))
-
-    cover_count = raw_text.count("IMAGE_COVER:")
-    print("Prompt immagini trovati: " + str(cover_count))
+    print("Prompt immagini trovati: " + str(raw_text.count("IMAGE_COVER:")))
 
     print("Generazione immagini con Gemini...")
     enriched_blocks = []
@@ -112,16 +114,16 @@ def generate_digest(articles):
             elif line.startswith("IMAGE_BODY:"):
                 body_prompt = line.replace("IMAGE_BODY:", "").strip()
 
-        print("  Articolo " + str(i+1) + " - Cover prompt: " + cover_prompt[:80])
+        print("  Articolo " + str(i+1) + " - Cover: " + cover_prompt[:60])
 
-        if cover_prompt and cover_prompt != "...":
+        if cover_prompt:
             print("  Generando copertina...")
             cover_b64 = generate_image(cover_prompt, "copertina")
             if cover_b64:
                 block += "\nCOVER_IMAGE_B64: " + cover_b64
                 print("  Copertina OK")
 
-        if body_prompt and body_prompt != "...":
+        if body_prompt:
             print("  Generando immagine interna...")
             body_b64 = generate_image(body_prompt, "interna")
             if body_b64:
@@ -130,7 +132,6 @@ def generate_digest(articles):
 
         enriched_blocks.append(block)
 
-    # Ricostruisci il testo con separatore compatibile con mailer.py
     result = ""
     for block in enriched_blocks:
         result += "<!-- ARTICOLO -->\n" + block + "\n---\n"
