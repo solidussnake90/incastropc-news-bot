@@ -8,7 +8,6 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,13 +18,13 @@ jobs:
           python-version: '3.12'
 
       - name: Installa dipendenze
-        run: run: pip install feedparser anthropic google-genai
+        run: pip install feedparser anthropic google-genai
 
       - name: Avvia il bot
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          EMAIL_FROM:        ${{ secrets.EMAIL_FROM }}
-          EMAIL_PASSWORD:    ${{ secrets.EMAIL_PASSWORD }}
-          EMAIL_TO:          ${{ secrets.EMAIL_TO }}
-          GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python main.py
