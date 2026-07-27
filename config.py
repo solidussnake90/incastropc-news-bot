@@ -7,7 +7,7 @@ EMAIL_TO          = os.environ.get("EMAIL_TO")
 
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587
-TOP_N     = 8
+TOP_N     = 5
 
 RSS_FEEDS = [
     ("GamingOnLinux",     "https://www.gamingonlinux.com/article_rss.php"),
