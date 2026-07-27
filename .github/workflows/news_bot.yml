@@ -19,7 +19,7 @@ jobs:
           python-version: '3.12'
 
       - name: Installa dipendenze
-        run: pip install feedparser anthropic google-generativeai
+        run: run: pip install feedparser anthropic google-genai
 
       - name: Avvia il bot
         env:
