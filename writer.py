@@ -45,21 +45,16 @@ SYSTEM_PROMPT = (
 def generate_image(prompt, label="immagine"):
     try:
         from google import genai
-        from google.genai import types
         gemini_client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-        response = gemini_client.models.generate_image(
-            model="imagen-3.0-generate-002",
-            prompt="High quality image: " + prompt + ". Style: cinematic, professional, tech gaming aesthetic, sharp focus.",
-            config=types.GenerateImageConfig(
-                number_of_images=1,
-                aspect_ratio="16:9",
-            )
+        response = gemini_client.models.generate_content(
+            model="gemini-2.0-flash-preview-image-generation",
+            contents="Generate a high quality 16:9 image: " + prompt,
+            config={"response_modalities": ["IMAGE"]},
         )
-        if response.generated_images:
-            img_data = response.generated_images[0].image.image_bytes
-            return base64.b64encode(img_data).decode("utf-8")
-        else:
-            print("  Nessuna immagine generata per " + label)
+        for part in response.candidates[0].content.parts:
+            if hasattr(part, "inline_data") and part.inline_data:
+                return base64.b64encode(part.inline_data.data).decode("utf-8")
+        print("  Nessuna immagine nei risultati per " + label)
     except Exception as e:
         print("  Errore generazione " + label + ": " + str(e))
     return None
@@ -96,11 +91,9 @@ def generate_digest(articles):
     raw_text = response.content[0].text
     print("Articoli generati: " + str(len(raw_text)) + " caratteri")
 
-    # Conta quanti IMAGE_COVER ha incluso Claude
     cover_count = raw_text.count("IMAGE_COVER:")
     print("Prompt immagini trovati: " + str(cover_count))
 
-    # Genera immagini con Gemini
     print("Generazione immagini con Gemini...")
     blocks = raw_text.split("---")
     enriched_blocks = []
