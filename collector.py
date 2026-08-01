@@ -2,13 +2,18 @@ import feedparser
 import datetime
 from config import RSS_FEEDS
 
-def fetch_all(hours_back=24):
+def fetch_all(hours_back=12):
+    """
+    Scarica tutti i feed RSS e restituisce lista di articoli
+    pubblicati nelle ultime `hours_back` ore.
+    """
     articles = []
     cutoff = datetime.datetime.utcnow() - datetime.timedelta(hours=hours_back)
 
     for source_name, url in RSS_FEEDS:
         try:
             feed = feedparser.parse(url)
+            count = 0
             for entry in feed.entries:
                 published = None
                 if hasattr(entry, "published_parsed") and entry.published_parsed:
@@ -16,7 +21,12 @@ def fetch_all(hours_back=24):
                 elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
                     published = datetime.datetime(*entry.updated_parsed[:6])
 
+                # Scarta articoli troppo vecchi
                 if published and published < cutoff:
+                    continue
+
+                # Scarta articoli senza data (probabilmente vecchi)
+                if not published:
                     continue
 
                 summary = ""
@@ -32,11 +42,12 @@ def fetch_all(hours_back=24):
                     "summary":   summary,
                     "published": published,
                 })
+                count += 1
 
-            print(f"  ✓ {source_name}: {len(feed.entries)} articoli trovati")
+            print("  " + source_name + ": " + str(count) + " articoli recenti trovati")
 
         except Exception as e:
-            print(f"  ✗ {source_name}: errore — {e}")
+            print("  ERRORE " + source_name + ": " + str(e))
 
-    print(f"\nTotale articoli raccolti: {len(articles)}")
+    print("\nTotale articoli recenti (ultime 12h): " + str(len(articles)))
     return articles
