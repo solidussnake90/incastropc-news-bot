@@ -1,5 +1,6 @@
 import smtplib
 import datetime
+import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from config import SMTP_HOST, SMTP_PORT, EMAIL_FROM, EMAIL_PASSWORD, EMAIL_TO
@@ -16,6 +17,12 @@ EMAIL_TEMPLATE = """
   .header h1 {{ color: #FFD700; margin: 0; font-size: 22px; letter-spacing: 1px; }}
   .header p {{ color: rgba(255,255,255,0.5); margin: 6px 0 0; font-size: 13px; }}
   .content {{ padding: 32px; }}
+  .consigliato-box {{ background: linear-gradient(135deg, #1a1a2e, #16213e); border: 2px solid #FFD700;
+    border-radius: 8px; padding: 20px 24px; margin-bottom: 32px; }}
+  .consigliato-box .badge {{ background: #FFD700; color: #000; font-weight: 700; font-size: 12px;
+    padding: 3px 12px; border-radius: 20px; display: inline-block; margin-bottom: 10px; }}
+  .consigliato-box h2 {{ color: #FFD700; margin: 0 0 8px; font-size: 16px; }}
+  .consigliato-box p {{ color: rgba(255,255,255,0.8); margin: 0; font-size: 14px; line-height: 1.5; }}
   .article-block {{ border: 1px solid #e8e8e8; border-radius: 6px; margin-bottom: 40px; overflow: hidden; }}
   .article-header {{ background: #0a0a14; padding: 14px 20px; }}
   .article-num {{ background: #FFD700; color: #000; font-weight: 700; font-size: 13px; padding: 3px 10px; border-radius: 3px; }}
@@ -34,15 +41,24 @@ EMAIL_TEMPLATE = """
 <body>
 <div class="container">
   <div class="header">
-    <h1>IncastroPC - Articoli del giorno</h1>
-    <p>{count} articoli pronti per WordPress - {date}</p>
+    <h1>⚡ IncastroPC Gaming News</h1>
+    <p>{count} articoli pronti per WordPress · {date}</p>
   </div>
-  <div class="content">{articles_html}</div>
-  <div class="footer">Generato da IncastroPC News Bot - {date}</div>
+  <div class="content">
+    {consigliato_html}
+    {articles_html}
+  </div>
+  <div class="footer">Generato da IncastroPC Gaming Bot · {date}</div>
 </div>
 </body>
 </html>
 """
+
+def parse_consigliato(raw_text):
+    match = re.search(r"==CONSIGLIATO==(.*?)==FINE_CONSIGLIATO==", raw_text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return ""
 
 def parse_articles(raw_text):
     articles = []
@@ -53,6 +69,32 @@ def parse_articles(raw_text):
             block = block.replace("<!-- ARTICOLO -->", "").strip()
             articles.append(block)
     return articles
+
+def format_consigliato_html(consigliato_text, articles):
+    if not consigliato_text:
+        return ""
+    lines = consigliato_text.strip().split("\n")
+    numero = lines[0].strip() if lines else "1"
+    motivazione = " ".join(lines[1:]).strip() if len(lines) > 1 else ""
+
+    # Trova il titolo dell'articolo consigliato
+    titolo = ""
+    try:
+        idx = int(numero) - 1
+        if 0 <= idx < len(articles):
+            block = articles[idx]
+            match = re.search(r"<h1>(.*?)</h1>", block)
+            if match:
+                titolo = match.group(1)
+    except:
+        pass
+
+    return f"""
+    <div class="consigliato-box">
+      <span class="badge">⭐ PUBBLICA OGGI — Articolo {numero}</span>
+      <h2>{titolo}</h2>
+      <p>{motivazione}</p>
+    </div>"""
 
 def format_article_html(block, index):
     yoast_kp = yoast_meta = yoast_slug = ""
@@ -90,19 +132,10 @@ def format_article_html(block, index):
     if image_cover or image_body:
         image_block = '<div class="image-block"><strong>🎨 Prompt immagini per Adobe Firefly</strong>'
         if image_cover:
-            image_block += (
-                '<b>Copertina:</b>'
-                '<span class="prompt">' + image_cover + '</span>'
-            )
+            image_block += '<b>Copertina:</b><span class="prompt">' + image_cover + '</span>'
         if image_body:
-            image_block += (
-                '<b style="display:block;margin-top:8px;">Immagine interna:</b>'
-                '<span class="prompt">' + image_body + '</span>'
-            )
-        image_block += (
-            '<br><a href="https://firefly.adobe.com" class="firefly-link" target="_blank">'
-            '→ Apri Adobe Firefly</a></div>'
-        )
+            image_block += '<b style="display:block;margin-top:8px;">Immagine interna:</b><span class="prompt">' + image_body + '</span>'
+        image_block += '<br><a href="https://firefly.adobe.com" class="firefly-link" target="_blank">→ Apri Adobe Firefly</a></div>'
 
     return (
         '<div class="article-block">'
@@ -113,7 +146,11 @@ def format_article_html(block, index):
 
 def send_digest(raw_text):
     today = datetime.date.today().strftime("%d %B %Y")
+
+    consigliato_text = parse_consigliato(raw_text)
     article_blocks = parse_articles(raw_text)
+
+    consigliato_html = format_consigliato_html(consigliato_text, article_blocks)
 
     if not article_blocks:
         articles_html = "<pre>" + raw_text[:2000] + "</pre>"
@@ -126,12 +163,13 @@ def send_digest(raw_text):
 
     html_body = EMAIL_TEMPLATE.format(
         articles_html=articles_html,
+        consigliato_html=consigliato_html,
         count=count,
         date=today
     )
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = "IncastroPC Articoli - " + today
+    msg["Subject"] = "⚡ IncastroPC Gaming News — " + today
     msg["From"] = EMAIL_FROM
     msg["To"] = EMAIL_TO
     msg.attach(MIMEText(html_body, "html"))
