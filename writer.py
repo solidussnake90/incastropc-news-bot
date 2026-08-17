@@ -120,6 +120,7 @@ SYSTEM_PROMPT = (
     "<!-- /wp:paragraph -->\n"
     "YOAST_KEYPHRASE: [max 4 parole]\n"
     "YOAST_METADESC: [140-156 caratteri]\n"
+    "YOAST_EXCERPT: [riassunto breve max 155 caratteri, diverso dalla meta]\n"
     "YOAST_SLUG: [slug-kebab-case]\n"
     "YOAST_TAGS: [tag1, tag2, tag3, tag4, tag5]\n"
     "IMAGE_COVER: [prompt inglese copertina cinematografica 16:9, no text in image]\n"
