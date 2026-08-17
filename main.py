@@ -264,7 +264,7 @@ def run():
 
     try:
         lines  = consigliato_text.strip().split("\n")
-        numero = int(lines[0].strip()) - 1
+        numero = int(re.search(r'\d+', lines[0]).group()) - 1
         if 0 <= numero < len(article_blocks):
             block = article_blocks[numero]
             title, content, excerpt, slug, keyphrase, metadesc, tags, cover_prompt, body_prompts, social_caption = extract_article_data(block)
