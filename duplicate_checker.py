@@ -55,6 +55,7 @@ def check_wp_duplicates(title, max_results=10):
 
         req = urllib.request.Request(url)
         req.add_header("Authorization", "Basic " + credentials)
+        req.add_header("User-Agent", "Mozilla/5.0 IncastroPC-Bot/3.0")
 
         with urllib.request.urlopen(req, timeout=WP_TIMEOUT) as resp:
             posts = json.loads(resp.read())
