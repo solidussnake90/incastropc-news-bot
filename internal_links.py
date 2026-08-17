@@ -18,6 +18,7 @@ def get_wp_posts(search_query, max_results=5):
 
         req = urllib.request.Request(url)
         req.add_header("Authorization", "Basic " + credentials)
+        req.add_header("User-Agent", "Mozilla/5.0 IncastroPC-Bot/3.0")
 
         with urllib.request.urlopen(req, timeout=WP_TIMEOUT) as resp:
             posts = json.loads(resp.read())
