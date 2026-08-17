@@ -1,8 +1,8 @@
-name: IncastroPC News Bot
+name: IncastroPC Gaming News Bot
 
 on:
   schedule:
-    - cron: '0 3 * * *'
+    - cron: '0 4 * * *'
   workflow_dispatch:
 
 jobs:
@@ -23,13 +23,10 @@ jobs:
       - name: Avvia il bot
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM:        ${{ secrets.EMAIL_FROM }}
+          EMAIL_PASSWORD:    ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_TO:          ${{ secrets.EMAIL_TO }}
+          WP_URL:            ${{ secrets.WP_URL }}
+          WP_USERNAME:       ${{ secrets.WP_USERNAME }}
+          WP_PASSWORD:       ${{ secrets.WP_PASSWORD }}
         run: python main.py
-
-  keep-alive:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Keep repository active
-        run: echo "Keep alive $(date)"
