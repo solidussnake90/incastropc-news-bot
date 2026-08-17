@@ -30,17 +30,71 @@ stats = {
     "errori":           0,
 }
 
-def wp_publish(title, content, slug, keyphrase, metadesc, tags, featured_media_id=None):
+def get_or_create_tag(tag_name, credentials):
+    """Ottiene o crea un tag su WordPress, restituisce l'ID."""
+    try:
+        # Cerca tag esistente
+        url = WP_URL + "/wp-json/wp/v2/tags?search=" + urllib.request.quote(tag_name)
+        req = urllib.request.Request(url)
+        req.add_header("Authorization", "Basic " + credentials)
+        req.add_header("User-Agent", UA)
+        with urllib.request.urlopen(req, timeout=WP_TIMEOUT) as resp:
+            tags = json.loads(resp.read())
+            for t in tags:
+                if t.get("name", "").lower() == tag_name.lower():
+                    return t["id"]
+
+        # Crea tag nuovo
+        payload = json.dumps({"name": tag_name}).encode("utf-8")
+        req = urllib.request.Request(WP_URL + "/wp-json/wp/v2/tags", data=payload, method="POST")
+        req.add_header("Authorization", "Basic " + credentials)
+        req.add_header("Content-Type", "application/json")
+        req.add_header("User-Agent", UA)
+        with urllib.request.urlopen(req, timeout=WP_TIMEOUT) as resp:
+            result = json.loads(resp.read())
+            return result.get("id")
+    except Exception as e:
+        print("  Avviso tag '" + tag_name + "': " + str(e))
+    return None
+
+def get_category_id(category_name, credentials):
+    """Ottiene l'ID di una categoria WordPress."""
+    try:
+        url = WP_URL + "/wp-json/wp/v2/categories?search=" + urllib.request.quote(category_name)
+        req = urllib.request.Request(url)
+        req.add_header("Authorization", "Basic " + credentials)
+        req.add_header("User-Agent", UA)
+        with urllib.request.urlopen(req, timeout=WP_TIMEOUT) as resp:
+            cats = json.loads(resp.read())
+            for c in cats:
+                if c.get("name", "").lower() == category_name.lower():
+                    return c["id"]
+    except Exception as e:
+        print("  Avviso categoria: " + str(e))
+    return None
+
+def wp_publish(title, content, excerpt, slug, keyphrase, metadesc, tags, featured_media_id=None):
+    """Pubblica su WordPress con categoria, tag, excerpt e featured image."""
     if not WP_URL or not WP_USERNAME or not WP_PASSWORD:
         print("  Credenziali WordPress mancanti")
         return None
 
     credentials = base64.b64encode((WP_USERNAME + ":" + WP_PASSWORD).encode()).decode()
-    api_url = WP_URL + "/wp-json/wp/v2/posts"
+
+    # Ottieni ID categoria News
+    category_id = get_category_id("News", credentials)
+
+    # Ottieni/crea ID tag
+    tag_ids = []
+    for tag in tags[:8]:
+        tag_id = get_or_create_tag(tag, credentials)
+        if tag_id:
+            tag_ids.append(tag_id)
 
     post_data = {
         "title":   title,
         "content": content,
+        "excerpt": excerpt,
         "status":  WP_STATUS,
         "slug":    slug,
         "meta": {
@@ -48,11 +102,16 @@ def wp_publish(title, content, slug, keyphrase, metadesc, tags, featured_media_i
             "_yoast_wpseo_metadesc": metadesc,
         }
     }
+
+    if category_id:
+        post_data["categories"] = [category_id]
+    if tag_ids:
+        post_data["tags"] = tag_ids
     if featured_media_id:
         post_data["featured_media"] = featured_media_id
 
     payload = json.dumps(post_data).encode("utf-8")
-    req = urllib.request.Request(api_url, data=payload, method="POST")
+    req = urllib.request.Request(WP_URL + "/wp-json/wp/v2/posts", data=payload, method="POST")
     req.add_header("Authorization", "Basic " + credentials)
     req.add_header("Content-Type", "application/json")
     req.add_header("User-Agent", UA)
@@ -72,7 +131,8 @@ def wp_publish(title, content, slug, keyphrase, metadesc, tags, featured_media_i
     return None
 
 def extract_article_data(block):
-    title = slug = keyphrase = metadesc = cover_prompt = social_caption = ""
+    """Estrae tutti i dati da un blocco articolo."""
+    title = slug = keyphrase = metadesc = excerpt = cover_prompt = social_caption = ""
     tags = []
     body_prompts = []
     clean_lines = []
@@ -86,6 +146,8 @@ def extract_article_data(block):
             slug = line.replace("YOAST_SLUG:", "").strip()
         elif line.startswith("YOAST_TAGS:"):
             tags = [t.strip() for t in line.replace("YOAST_TAGS:", "").split(",") if t.strip()]
+        elif line.startswith("YOAST_EXCERPT:"):
+            excerpt = line.replace("YOAST_EXCERPT:", "").strip()
         elif line.startswith("IMAGE_COVER:"):
             cover_prompt = line.replace("IMAGE_COVER:", "").strip()
         elif line.startswith("IMAGE_BODY_1:"):
@@ -102,9 +164,14 @@ def extract_article_data(block):
     if match:
         title = re.sub(r"<[^>]+>", "", match.group(1)).strip()
 
-    return title, content, slug, keyphrase, metadesc, tags, cover_prompt, body_prompts, social_caption
+    # Se excerpt non fornito, usa metadesc
+    if not excerpt and metadesc:
+        excerpt = metadesc
+
+    return title, content, excerpt, slug, keyphrase, metadesc, tags, cover_prompt, body_prompts, social_caption
 
 def insert_images_in_content(content, body_images):
+    """Inserisce le immagini nei placeholder."""
     for i, img in enumerate(body_images):
         placeholder = "<!-- IMMAGINE INTERNA " + str(i+1) + " -->"
         wp_block = (
@@ -120,6 +187,7 @@ def insert_images_in_content(content, body_images):
     return content
 
 def send_telegram(caption, article_url):
+    """Invia notifica su Telegram."""
     from config import TELEGRAM_TOKEN, TELEGRAM_CHAT, SOCIAL_ENABLED
     if not SOCIAL_ENABLED or not TELEGRAM_TOKEN or not TELEGRAM_CHAT:
         return
@@ -199,7 +267,7 @@ def run():
         numero = int(lines[0].strip()) - 1
         if 0 <= numero < len(article_blocks):
             block = article_blocks[numero]
-            title, content, slug, keyphrase, metadesc, tags, cover_prompt, body_prompts, social_caption = extract_article_data(block)
+            title, content, excerpt, slug, keyphrase, metadesc, tags, cover_prompt, body_prompts, social_caption = extract_article_data(block)
             print("  Elaboro: " + title)
 
             featured_media_id = None
@@ -210,7 +278,7 @@ def run():
             else:
                 content = insert_images_in_content(content, [])
 
-            published_url = wp_publish(title, content, slug, keyphrase, metadesc, tags, featured_media_id)
+            published_url = wp_publish(title, content, excerpt, slug, keyphrase, metadesc, tags, featured_media_id)
 
             if published_url:
                 stats["pubblicate"] += 1
