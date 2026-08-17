@@ -56,6 +56,7 @@ def wp_publish(title, content, slug, keyphrase, metadesc, tags, featured_media_i
     payload = json.dumps(post_data).encode("utf-8")
     req = urllib.request.Request(api_url, data=payload, method="POST")
     req.add_header("Authorization", "Basic " + credentials)
+        req.add_header("User-Agent", "Mozilla/5.0 IncastroPC-Bot/3.0")
     req.add_header("Content-Type", "application/json")
 
     try:
